@@ -1,4 +1,4 @@
-# mini-hackathon-ctw
+# mini-hackathon-ctw.
 
 ## Simple API
 

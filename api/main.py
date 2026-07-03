@@ -31,24 +31,6 @@ def ready() -> dict[str, str]:
     return {"status": "ready"}
 
 
-@app.get("/models")
-def models_by_manufacturer(
-    manufacturer_id: int = Query(
-        description="Manufacturer ID to list all models for.",
-    ),
-) -> dict[str, object]:
-    bucket = os.getenv("VEHICLE_DATA_BUCKET", "vehicle-data")
-    prefix = os.getenv("VEHICLE_DATA_PREFIX", "parquet/")
-    sql = (
-        "SELECT model_id, manufacturer_id, name, segment "
-        f"FROM read_parquet('s3://{bucket}/{prefix}models.parquet') "
-        f"WHERE manufacturer_id = {manufacturer_id} "
-        "ORDER BY model_id"
-    )
-    rows = run_athena_query(sql)
-    return {"manufacturer_id": manufacturer_id, "row_count": len(rows), "rows": rows}
-
-
 @app.get("/vehicle-summary")
 def vehicle_summary(
     manufacturer: str = Query(description="Manufacturer name, e.g. BMW.", default="BMW"),

@@ -1,87 +1,90 @@
-# mini-hackathon-ctw
+# C.L.U.B Mini-hackathon — Fast Queries Under Pressure
 
-## Simple API
+## Requirements
 
-This repo now includes a minimal FastAPI app that reads all `.parquet` files from the `vehicle-data` bucket in LocalStack and exposes them at `GET /get_all`.
+- [UV](https://docs.astral.sh/uv/)
+- Podman / Docker
 
-## Run everything containerized
+## About it
 
-The whole stack (ministack + the API) runs with Docker Compose.
-The API is built from the multi-stage alpine [`api/Dockerfile`](api/Dockerfile)
-(build context is the `api/` folder) and is capped at **512 MB RAM** and
-**0.5 CPU**.
+A performance challenge built on a **working but intentionally slow** FastAPI
+service. The API answers `GET /vehicle-summary` by joining **10 tables** stored
+as Parquet files and queried through a local AWS emulator (Ministack: Athena +
+S3, DuckDB engine).
+
+![Architecture overview](docs/Arch_overview.png)
+
+## What is the challenge
+
+Make `GET /vehicle-summary` respond **as fast as possible** without changing
+**what** it returns.
+
+```
+GET /vehicle-summary?manufacturer=BMW&model=X1&year=1999
+```
+
+- The response must stay **semantically correct** (same data, same shape).
+- Any technique is fair game inside the constraints.
+
+## How to run dependencies containerized
+
+Start the infrastructure only — Ministack plus the one-shot S3 seeder — and
+leave the API out so you can run and optimize it yourself.
 
 ```bash
-cd infra
-docker compose up -d --build
+docker compose -f infra/docker-compose.yml up -d ministack seed-init
 ```
 
-This starts two containers:
+Ministack listens on `http://localhost:4566`. The seeder loads the Parquet data into the `vehicle-data` bucket and then exits.
 
-| Service | Purpose | Host port |
-|---------|---------|-----------|
-| `ministack` | Emulates AWS Athena + S3 (DuckDB engine) | 4566 |
-| `api` | FastAPI service | 8000 |
+### Run the API yourself (locally, with uv)
 
-> **Note:** the API publishes host port `8000`. If a local dev server is already
-> using it, stop that process first (or it will fail to bind).
-
-Check it is up:
+From the repo root:
 
 ```bash
-curl -s http://localhost:8000/health
-curl -s "http://localhost:8000/vehicle-summary?manufacturer=BMW&model=X1&year=1999"
+uv sync --project api --active
+uv run --project api uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --active
 ```
 
-Useful commands:
+Check it is up on http://localhost:8000/docs (/health endpoint)
+
+
+
+## How to run the Load Test
+
+The load test hammers `GET /vehicle-summary` with [Locust](https://locust.io/)
+and produces an HTML + CSV report. The stack must be running and reachable at
+`http://localhost:8000`.
 
 ```bash
-docker compose logs -f api    # follow API logs
-docker compose ps             # list running services
-docker compose down           # stop everything
-docker compose up -d --build api  # rebuild & restart only the API
+cd tests/performance
+./run.sh          # headless: warm-up + measured run, writes reports/report_<timestamp>.html
+./run.sh web      # live web UI with charts at http://localhost:8089
 ```
 
-## Run the API locally (without Docker)
+See [tests/performance/README.md](tests/performance/README.md) for the full list.
 
-### Install with UV
+## Test scenario
 
-The project metadata (`pyproject.toml`, `uv.lock`, `.python-version`) now lives
-in the [`api/`](api/) folder. Run uv from the repo root with `--project api`
-so the `api.main` package stays importable:
+The official scoring run uses **15 users**, a **10 second** measured window and
+**100 requests**:
 
 ```bash
-uv sync --project api
+cd tests/performance
+USERS=15 RUN_SECONDS=10 TARGET_REQUESTS=100 ./run.sh
 ```
 
-### Run the API
+## Constraints
 
-```bash
-uv run --project api uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-```
+- ✅ You may **only** change files under the [`api/`](api/) folder.
+- 🚫 Do **not** change the `/vehicle-summary` response schema (same data, same shape).
+- 🚫 Do **not** relax the API container resource limits (0.5 CPU, capped RAM)
+  defined in [infra/docker-compose.yml](infra/docker-compose.yml).
 
-### Endpoints
+## How to submit your version
 
-```text
-GET /health
-GET /get_all
-GET /athena?sql=...     # runs SQL via Athena (DuckDB engine)
-```
+1. **Fork** this repository.
+2. Make your changes (only under [`api/`](api/)).
+3. Open a **pull request** against this repo's `main` branch.
 
-Example:
-
-```bash
-curl --get http://localhost:8000/athena \
-  --data-urlencode "sql=SELECT COUNT(*) AS n FROM read_parquet('s3://vehicle-data/parquet/manufacturers.parquet')"
-```
-
-### Optional environment variables
-
-```text
-AWS_ENDPOINT_URL=http://localhost:4566
-AWS_REGION=us-east-1
-VEHICLE_DATA_BUCKET=vehicle-data
-VEHICLE_DATA_PREFIX=parquet/
-ATHENA_OUTPUT_LOCATION=s3://athena-results/
-ATHENA_TIMEOUT_SECONDS=30
-```
+Good luck, have fun!

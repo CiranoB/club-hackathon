@@ -43,7 +43,7 @@ From the repo root:
 
 ```bash
 uv sync --project api --active
-uv run --project api uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --active
+uv run --project api uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Check it is up on http://localhost:8000/docs (/health endpoint)
